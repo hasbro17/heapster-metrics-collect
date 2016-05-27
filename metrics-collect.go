@@ -2,7 +2,7 @@
 
 package main
 
-//import "fmt"
+import "fmt"
 import "net/http"
 import "io/ioutil"
 import "time"
@@ -201,13 +201,37 @@ func generateCharts(fnamePrefix string, chartType string, metricTypes []string, 
 
 }
 
+//Check for correct arguments of minutes and chartype
+func checkArgs(args []string) (int, string) {
+	if len(args) != 2 {
+		fmt.Printf("Usage: ./metrics_collect <interval-minutes> <chart-type>\n")
+		os.Exit(1)
+	}
+
+	chartTypes := map[string]bool { "spline": true, "line": true, "bar": true, "column": true, "area": true }
+
+	minutes, err := strconv.Atoi(args[0])
+	check(err)
+	chartType := args[1]
+
+	if !chartTypes[chartType] {
+		fmt.Printf("Valid Chart types: spline/line/bar/column/area\n")
+		os.Exit(1)
+	}
+
+	return minutes, chartType
+}
+
 
 
 func main() {
 
+	args := os.Args[1:]
+	minutes, chartType := checkArgs(args)
+
 	//Set time interval of measurment for last m minutes [now-m, now]
 	//Heapster only has 15 minutes of data
-	start, end := timeInterval(20)
+	start, end := timeInterval(minutes)
 
 	//Heapster service URL
 	//Needs kubectl proxy running
@@ -277,9 +301,7 @@ func main() {
 
 	///////// Generate chart files from matrices ////////////
 
-	/* CLUSTER CHARTS */
-	//Chart type
-	chartType := "spline"
+	//CLUSTER CHARTS
 	//Filename prefix
 	fnamePrefix := "Cluster-"
 	//Make a line chart file for each type of cluster metric
@@ -302,17 +324,13 @@ func main() {
 		createTimeSeriesChartFile(fnamePrefix + metricType, chartType, xAxisData, yAxisData, yAxisLineNames, yAxisText)
 	}
 
-	/* NODE CHARTS */
-	//Chart type
-	chartType = "spline"
+	//NODE CHARTS
 	//Filename prefix
 	fnamePrefix = "Node-"
 	generateCharts(fnamePrefix, chartType, nodeMetricTypes, nodeNames, nodeMetrics)
 	
 
-	/* POD CHARTs */
-	//Chart type
-	chartType = "spline"
+	//POD CHARTs
 	//Filename prefix
 	fnamePrefix = "Pod-"
 	generateCharts(fnamePrefix, chartType, podMetricTypes, podNames, podMetrics)
