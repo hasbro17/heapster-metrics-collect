@@ -132,15 +132,30 @@ func timeInterval(m int)(string, string) {
 	//Format to RFC3339
 	start := startTime.Format(time.RFC3339)
 	end := endTime.Format(time.RFC3339)
+	fmt.Printf("start=%s\n end=%s\n", start, end);
 
 	return start, end
 }
 
 
+func make3Dslice(x int) [][][]int {
+	arr3 := make([][][]int, x)
+	for j := 0; j < x; j++ {
+		arr2 := make([][]int, 0)//0 so we can append rows into it
+		arr3[j] = arr2
+	}
+	return arr3
+}
+
+
 func main() {
 
+	
+	
+	
+
 	//Set time interval of measurment for last m minutes [now-m, now]
-	start, end := timeInterval(6)
+	start, end := timeInterval(14)
 
 	//Heapster service URL
 	heapsterServiceURLPrefix := "http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/heapster"
@@ -161,6 +176,15 @@ func main() {
 	responseStr = httpGetReq(heapsterServiceURLPrefix + "/api/v1/model/namespaces/default/pods/")
 	podNames := extractNames(responseStr)
 
+	//Metric vars
+	clusterMetrics := make([][]int, len(clusterMetricTypes)) //[metric type][values]
+
+	nodeMetrics := make3Dslice(len(nodeMetricTypes)) //[metric type][node name][values]
+	podMetrics := make3Dslice(len(podMetricTypes)) //[metric type][pod name][values]
+
+	//nodeMetrics := make([][][]int, len(nodeNames)) //[metric type][node name][values]
+	//podMetrics := make([][][]int{}, len(podNames)) //[metric type][pod name][values]
+
 
 	//Get all metrics for the cluster
 	fmt.Printf("\n\nCLUSTER METRICS\n")
@@ -169,31 +193,42 @@ func main() {
 		responseStr = httpGetReq(heapsterServiceURLPrefix + metricCmd)
 		values, _ := extractValues(responseStr)
 		fmt.Printf("%s: %v\n", metricType, values)
-		
+		clusterMetrics = append(clusterMetrics, values)
 	}
 
 	//Get all metrics for each node
 	fmt.Printf("\n\nNODE METRICS\n")
-	for _, metricType := range nodeMetricTypes {
+	for i, metricType := range nodeMetricTypes {
 		fmt.Printf("\nMetric Type: %s\n", metricType)
 		for _, nodeName := range nodeNames {
 			metricCmd := "/api/v1/model/nodes/" + nodeName + "/metrics/" + metricType + "?start=" + start + "&end=" + end
 			responseStr = httpGetReq(heapsterServiceURLPrefix + metricCmd)
 			values, _ := extractValues(responseStr)
-			fmt.Printf("%s: %v\n", nodeName, values)	
+			fmt.Printf("%s: %v\n", nodeName, values)
+			nodeMetrics[i] = append(nodeMetrics[i], values)
 		}
 		
 	}
+/*
+	fmt.Printf("Node matrix")
+	for i, metricType := range nodeMetricTypes {
+		fmt.Printf("\nMetric Type: %s\n", metricType)
+		for j, nodeName := range nodeNames {
 
+			fmt.Printf("%s: %v\n", nodeName, nodeMetrics[i][j])
+		}
+	}
+*/
 	//Get all metrics for each pod
 	fmt.Printf("\n\nPOD METRICS\n")
-	for _, metricType := range podMetricTypes {
+	for i, metricType := range podMetricTypes {
 		fmt.Printf("\nMetric Type: %s\n", metricType)
 		for _, podName := range podNames {
 			metricCmd := "/api/v1/model/namespaces/default/pods/" + podName + "/metrics/" + metricType + "?start=" + start + "&end=" + end
 			responseStr = httpGetReq(heapsterServiceURLPrefix + metricCmd)
 			values, _ := extractValues(responseStr)
 			fmt.Printf("%s: %v\n", podName, values)
+			podMetrics[i] = append(podMetrics[i], values)
 		}
 		
 	}
