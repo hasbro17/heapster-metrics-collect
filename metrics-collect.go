@@ -23,7 +23,6 @@ func check(e error) {
 // Prints an error and returns empty string on failure
 func httpGetReq(urlString string) (string) {
 
-	//fmt.Printf("Request:\n %s\n\n", urlString)
 	resp, err := http.Get(urlString);
 	check(err)
 	
@@ -34,7 +33,6 @@ func httpGetReq(urlString string) (string) {
 
 	//Convert body byte array to string
 	str := string(body[:])
-	//fmt.Printf("Response:\n %s\n\n", str);
     return str
 }
 
@@ -53,11 +51,10 @@ func extractValues(str string, allTS []string) ([]int, []string, []int) {
 	//Remove all endline and spaces
 	str = removeWhitespace(str)
 
-	//fmt.Printf("\nBefore split:\n %s", str)
 	i := strings.Index(str, "[")
 	j := strings.Index(str, "]")
 	str = str[i+1:j]
-	//fmt.Printf("\nAfter split:\n %s", str)
+
 	toks := strings.Split(str, "}")
 	toks = toks[:len(toks)-1] //remove the last empty token
 
@@ -75,11 +72,9 @@ func extractValues(str string, allTS []string) ([]int, []string, []int) {
 		values[i] = num
 
 		//Get time stamp
-		//fmt.Printf("\nTimeStamp: %s\n", tmp[0])
 		tmp = strings.Split(tmp[0], "{\"timestamp\":")
 		t := tmp[1];
 		t = t[1:len(t)-2]
-		//fmt.Printf("\nTimeStamp: %s\n", t)
 		timestamps[i] = t
 	}
 
@@ -91,9 +86,6 @@ func extractValues(str string, allTS []string) ([]int, []string, []int) {
 	}
 
 	tsShort := shortenTSArray(timestamps)
-
-	//fmt.Printf("SliceTS len(%d): %v\n\n", len(sliceTS), sliceTS)
-	//fmt.Printf("Timestamps len(%d): %v\n\n", len(timestampsS), timestampsS)
 
 	var l int = 0
 	//For every value
@@ -132,7 +124,6 @@ func extractNames(str string) ([]string) {
 		for i, t := range tok {
 			t = t[1:len(t)-1]
 			names[i] = t
-			//fmt.Printf("\nIndex: %d\n value:\n %s\n\n", i, t)
 		}
 		return names
 	}
@@ -169,7 +160,6 @@ func timeInterval(m int, resolution int, urlPrefix string)(string, string, []str
 	//Format to RFC3339
 	startTimeStr := startTime.Format(time.RFC3339)
 	endTimeStr := endTime.Format(time.RFC3339)
-	//fmt.Printf("start=%s\n end=%s\n", start, end);
 
 	//Get actual latest timestamp from cluster
 	metricCmd := "/api/v1/model/metrics/cpu/usage_rate" + "?start=" + startTimeStr + "&end=" + endTimeStr
@@ -186,9 +176,6 @@ func timeInterval(m int, resolution int, urlPrefix string)(string, string, []str
 	newEndTime, err := time.Parse(time.RFC3339, newEndStr)
 	check(err)
 
-
-	//fmt.Printf("New end: %v\n\n", newEnd)
-
 	//Construct slice of expected timestamps
 	res := time.Duration(resolution) * time.Second
 	steps := int(-intervalDuration/res)
@@ -203,15 +190,10 @@ func timeInterval(m int, resolution int, urlPrefix string)(string, string, []str
 		ts = ts.Add(res)
 	}
 
-	//fmt.Printf("TS Map: %v\n\n", timestampsMap)
-
-	//fmt.Printf("Sorted Array: %v\n\n", timestampsSlice)
-
-
 	return startTimeStr, endTimeStr, timestampsSlice
 }
 
-//Prepare a 3d slice for appending data
+//Prepare a 3d slice for appending integer data
 func make3DsliceInt(innerSliceLen int) [][][]int {
 
 	arr3 := make([][][]int, innerSliceLen)
@@ -222,6 +204,7 @@ func make3DsliceInt(innerSliceLen int) [][][]int {
 	return arr3
 }
 
+//Prepare a 3d slice for appending string data
 func make3DsliceString(innerSliceLen int) [][][]string {
 
 	arr3 := make([][][]string, innerSliceLen)
@@ -238,19 +221,6 @@ func generateCharts(fnamePrefix string, chartType string, metricTypes []string, 
 
 	//Make a line chart file for each type of cluster metric
 	for i, metricType := range metricTypes {
-/*
-		//Get maximum length of any data row for this metric type
-		maxLen := 0
-		for _, arr := range metrics[i] {
-			maxLen = int(math.Max(float64(len(arr)), float64(maxLen)))
-		}
-
-		//Prepare xAxisData (Can be later changed to reflect actual timestamps)
-		xAxisData := make([]int, 0)
-		for j := 0; j < maxLen; j++ {
-			xAxisData = append(xAxisData, j+1)
-		}
-*/
 		xAxisData := shortTS
 		//Values
 		yAxisData := make([][]int, 0)
@@ -263,7 +233,6 @@ func generateCharts(fnamePrefix string, chartType string, metricTypes []string, 
 		}
 		
 		//Create chart file
-		//gochartgen.CreateTimeSeriesChartFile(fnamePrefix + metricType, chartType, xAxisData, yAxisData, yAxisLineNames, yAxisText)
 		gochartgen.CreateTimeSeriesChartFileTS(fnamePrefix + metricType, chartType, xAxisData, yAxisData, yAxisLineNames, yAxisText)
 	}
 }
@@ -387,7 +356,6 @@ func main() {
 			responseStr = httpGetReq(heapsterServiceURLPrefix + metricCmd)
 			values, timestamps, eValues := extractValues(responseStr, sliceTS)
 			fmt.Printf("%s: %v\n", podName, values)
-			//fmt.Printf("%s: %v\n", timestamps, timestamps)
 			podMetrics[i] = append(podMetrics[i], values)
 			podTS[i] = append(podTS[i], timestamps)
 			podMetricsE[i] = append(podMetricsE[i], eValues)
@@ -402,15 +370,7 @@ func main() {
 	fnamePrefix := "Cluster-"
 	//Make a line chart file for each type of cluster metric
 	for i, metricType := range clusterMetricTypes {
-		//Prepare xAxisData (Can be later changed to reflect actual timestamps)
-		/*
-		xAxisData := make([]int, 0)
-		for j := 0; j < len(clusterMetrics[i]); j++ {
-			xAxisData = append(xAxisData, j+1)
-		}
-		*/
 		xAxisData := sliceTS
-		//fmt.Printf("len(clusterMetrics[%d])=%d\nx-axis: %v", i, len(clusterMetrics[i]), xAxisData)
 		//Values
 		yAxisData := make([][]int, 0)
 		yAxisLineNames := make([]string, 0)
@@ -420,7 +380,6 @@ func main() {
 		yAxisLineNames = append(yAxisLineNames, "k8s-cluster")
 
 		//Create chart file
-		//gochartgen.CreateTimeSeriesChartFile(fnamePrefix + metricType, chartType, xAxisData, yAxisData, yAxisLineNames, yAxisText)
 		gochartgen.CreateTimeSeriesChartFileTS(fnamePrefix + metricType, chartType, xAxisData, yAxisData, yAxisLineNames, yAxisText)
 	}
 

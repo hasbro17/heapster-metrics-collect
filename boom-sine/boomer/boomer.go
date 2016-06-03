@@ -139,9 +139,13 @@ func (b *Boomer) runWorker(n int) {
 	}
 	client := &http.Client{Transport: tr}
 
+
+	///// Changes made to original code /////
 	var sampleIndex int = 0
 	numSamples := len(b.WaveForm)
 	timeElapsed := time.Duration(0)
+
+	// Change the throttle delay over time according to the Qps values dictated by the sine wave form
 	for i := 0; i < n; i++ {
 		if b.Qps > 0 {
 			<-throttleTicker.C
