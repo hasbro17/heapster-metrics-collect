@@ -10,8 +10,6 @@ import "time"
 import "strings"
 import "strconv"
 import "os"
-//import "math"
-//import "sort"
 import "./gochartgen"
 
 //Error check helper
@@ -40,24 +38,30 @@ func httpGetReq(urlString string) (string) {
     return str
 }
 
-//Parses the (timestamp, value) response string and extracts an array of values and timestamps from it
-func extractValues(str string, sliceTS []string) ([]int, []string, []int) {
-
-	//Remove all endline and spaces
+//Removes whitespace and newline characters from string
+func removeWhitespace(str string)(string){
 	toks := strings.Split(str, "\n")
 	str = strings.Join(toks, "")
 	toks = strings.Fields(str);
 	str = strings.Join(toks, "")
-	//fmt.Printf("\nBefore split:\n %s", str)
+	return str
+}
 
+//Parses the (timestamp, value) response string and extracts an array of values and timestamps from it
+func extractValues(str string, allTS []string) ([]int, []string, []int) {
+
+	//Remove all endline and spaces
+	str = removeWhitespace(str)
+
+	//fmt.Printf("\nBefore split:\n %s", str)
 	i := strings.Index(str, "[")
 	j := strings.Index(str, "]")
 	str = str[i+1:j]
 	//fmt.Printf("\nAfter split:\n %s", str)
-	toks = strings.Split(str, "}")
+	toks := strings.Split(str, "}")
 	toks = toks[:len(toks)-1] //remove the last empty token
 
-	//Make a slice of values
+	//Slices of values and timestamps
 	values := make([]int, len(toks))
 	timestamps := make([]string, len(toks))
 
@@ -65,6 +69,10 @@ func extractValues(str string, sliceTS []string) ([]int, []string, []int) {
 		//Get value
 		tmp := strings.Split(tok, "\"value\":")
 		v := tmp[1];
+		//Convert value to int
+		num, err := strconv.Atoi(v)
+		check(err)
+		values[i] = num
 
 		//Get time stamp
 		//fmt.Printf("\nTimeStamp: %s\n", tmp[0])
@@ -72,41 +80,32 @@ func extractValues(str string, sliceTS []string) ([]int, []string, []int) {
 		t := tmp[1];
 		t = t[1:len(t)-2]
 		//fmt.Printf("\nTimeStamp: %s\n", t)
-		
-		//Convert value to int
-		num, err := strconv.Atoi(v)
-		check(err)
-
-		//Check if
-		values[i] = num
 		timestamps[i] = t
-
 	}
 
-	//Extended values for all timestamps, for plotting purposes
-	extendedValues := make([]int, len(sliceTS))
-	for i, _ := range extendedValues {
-		extendedValues[i] = -1; //default missing value
+	//Construct a slice of values for all timestamps in the range of allTS
+	//Useful for plotting purposes to see missing (value,timestamp) pairs
+	allValues := make([]int, len(allTS))
+	for i, _ := range allValues {
+		allValues[i] = -100; //default value for missing data point
 	}
 
-	//sliceTSS = shortenTSArray(sliceTS)
-	timestampsS := shortenTSArray(timestamps)
+	tsShort := shortenTSArray(timestamps)
 
 	//fmt.Printf("SliceTS len(%d): %v\n\n", len(sliceTS), sliceTS)
 	//fmt.Printf("Timestamps len(%d): %v\n\n", len(timestampsS), timestampsS)
 
-
 	var l int = 0
+	//For every value
 	for k, val := range values {
-		//Find the right index for this value, returned timestamps must be in order for this to work
-		for sliceTS[l] != timestampsS[k] {
+		//Find the index of its matching timestamp, and place the value there.
+		for allTS[l] != tsShort[k] {
 			l++
 		}
-		extendedValues[l] = val
+		allValues[l] = val
 	}
 
-
-	return values, timestamps, extendedValues
+	return values, timestamps, allValues
 }
 
 //Extracts an array of names from the (node/pod name) response string
@@ -140,15 +139,15 @@ func extractNames(str string) ([]string) {
 	
 }
 
-//Shorten the RFC399 timestamp to just minute:seconds
+//Shorten an RFC399 timestamp to just minute:seconds string
 func shortenTimeStamp(ts string)(string) {
 	toks := strings.Split(ts, "T")
-	//toks = strings.Split(toks[1], "-")
 	str := toks[1]
 	str = str[3:8]
 	return str
 }
 
+//Shorten an entire array of timestamps to minute:seconds format
 func shortenTSArray(sliceTS []string)([]string){
 	for i, ts := range sliceTS {
 		sliceTS[i] = shortenTimeStamp(ts)
@@ -159,54 +158,47 @@ func shortenTSArray(sliceTS []string)([]string){
 //Return RFC3999 interval [start, end] of m minutes
 //Where end = current time
 //resoultion in seconds
-func timeInterval(m int, resolution int, urlPrefix string)(string, string, map[string]bool, []string) {
+func timeInterval(m int, resolution int, urlPrefix string)(string, string, []string) {
 
+	//Construct start and end times
 	minutes := -m
 	endTime := time.Now()
 	intervalDuration := time.Duration(minutes)*time.Minute
 	startTime := endTime.Add(intervalDuration)
 
 	//Format to RFC3339
-	start := startTime.Format(time.RFC3339)
-	end := endTime.Format(time.RFC3339)
+	startTimeStr := startTime.Format(time.RFC3339)
+	endTimeStr := endTime.Format(time.RFC3339)
 	//fmt.Printf("start=%s\n end=%s\n", start, end);
 
 	//Get actual latest timestamp from cluster
-	metricCmd := "/api/v1/model/metrics/cpu/usage_rate" + "?start=" + start + "&end=" + end
+	metricCmd := "/api/v1/model/metrics/cpu/usage_rate" + "?start=" + startTimeStr + "&end=" + endTimeStr
 	str := httpGetReq(urlPrefix + metricCmd)
 
-	//Remove all endline and spaces
-	toks := strings.Split(str, "\n")
-	str = strings.Join(toks, "")
-	toks = strings.Fields(str);
-	str = strings.Join(toks, "")
-
-	//Hardcoded way to get latest timestamp TODO:Fix later
+	//Hardcoded way to parse and extract the latest timestamp from response string 
+	//TODO:Fix later
+	str = removeWhitespace(str)
 	str = str[len(str)-8:len(str)-3]
-	//update the end time value
-	newEndStr := end[:len(end)-11] + str + end[len(end)-6:]
+
+	//Update the end time value for difference in min:seconds from latest timestamp
+	newEndStr := endTimeStr[:len(endTimeStr)-11] + str + endTimeStr[len(endTimeStr)-6:]
 	//Parse it to update end time
-
-
-	//fmt.Printf("Previous end: %v\n\n", end)
-	//fmt.Printf("Updated end: %v\n\n", updatedEnd)
-
-	newEnd, err := time.Parse(time.RFC3339, newEndStr)
+	newEndTime, err := time.Parse(time.RFC3339, newEndStr)
 	check(err)
+
 
 	//fmt.Printf("New end: %v\n\n", newEnd)
 
-	//Construct map of expected timestamps
+	//Construct slice of expected timestamps
 	res := time.Duration(resolution) * time.Second
 	steps := int(-intervalDuration/res)
 
-	//Map of timestamps present
-	timestampsMap := make(map[string]bool)
+	//timestampsMap := make(map[string]bool)
 	timestampsSlice := make([]string, steps+1)
-	ts := newEnd.Add(intervalDuration)
+	ts := newEndTime.Add(intervalDuration)
 	for i := 0; i <= steps; i++ {
 		t := ts.Format(time.RFC3339)
-		timestampsMap[t] = true
+		//timestampsMap[t] = true
 		timestampsSlice[i] = t
 		ts = ts.Add(res)
 	}
@@ -216,7 +208,7 @@ func timeInterval(m int, resolution int, urlPrefix string)(string, string, map[s
 	//fmt.Printf("Sorted Array: %v\n\n", timestampsSlice)
 
 
-	return start, end, timestampsMap, timestampsSlice
+	return startTimeStr, endTimeStr, timestampsSlice
 }
 
 //Prepare a 3d slice for appending data
@@ -318,16 +310,16 @@ func main() {
 
 	//Set time interval of measurment for last m minutes [now-m, now]
 	//Heapster only has 15 minutes of data
-	start, end, _, sliceTS := timeInterval(minutes, resolution, heapsterServiceURLPrefix)
+	start, end, sliceTS := timeInterval(minutes, resolution, heapsterServiceURLPrefix)
 
 	sliceTS = shortenTSArray(sliceTS)
 
 	//Cluster metrics
-	clusterMetricTypes := [] string{"cpu/usage_rate", "memory/usage"}
+	clusterMetricTypes := [] string{"cpu/usage_rate"}//, "memory/usage"}
 	//Node metrics
 	nodeMetricTypes := [] string{}//"cpu/node_utilization", "memory/node_utilization", "memory/working_set", "network/tx_rate"}
 	//Pod metrics
-	podMetricTypes := [] string{"cpu/usage_rate", "memory/usage", "memory/working_set", "network/tx_rate"}
+	podMetricTypes := [] string{"cpu/usage_rate"}//, "memory/usage", "memory/working_set", "network/tx_rate"}
 
 
 	//Get list of node names
@@ -404,12 +396,6 @@ func main() {
 
 
 	///////// Generate chart files from the matrices ////////////
-
-	//Shorten the timestamps first
-	//shortTS := make([]string, len(sliceTS))
-//	for i, ts := range sliceTS {
-//		shortTS[i] = shortenTimeStamp(ts)
-//	}
 
 	//CLUSTER CHARTS
 	//Filename prefix
